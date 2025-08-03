@@ -30,11 +30,21 @@ pnpm install
 ### 2. Configure secrets
 
 ```bash
-# Set your shared authentication token
-wrangler secret put LOGPUSH_TOKEN
+# Generate a secure fixed-length token (recommended: 32 bytes base64)
+LOGPUSH_TOKEN=$(openssl rand -base64 32 | tr -d '\n')
+echo "Generated token: $LOGPUSH_TOKEN"
+
+# Set the token as a secret
+echo $LOGPUSH_TOKEN | wrangler secret put LOGPUSH_TOKEN
 
 # Set your RSA private key (paste the entire key including headers)
 wrangler secret put PRIVATE_KEY
+
+# Set your Datadog API key
+wrangler secret put DD_API_KEY
+
+# (Optional) Set custom Datadog endpoint if not using US1
+# wrangler secret put DD_LOGS_ENDPOINT
 ```
 
 ### 3. Configure AI Gateway
@@ -51,9 +61,24 @@ openssl rsa -in private_key.pem -pubout -out public_key.pem
 2. Upload `public_key.pem` to AI Gateway settings
 
 3. Configure Logpush destination:
+
+**Via Cloudflare Dashboard:**
+- Go to your Zone → Analytics → Logs → Logpush
+- Create a new Logpush job for AI Gateway logs
+- Set destination URL:
 ```
-https://<YOUR-WORKER>.<SUBDOMAIN>.workers.dev/ingest?header_X-Logpush-Token=<LOGPUSH_TOKEN>&header_DD-API-KEY=<DATADOG_API_KEY>
+https://<YOUR-WORKER>.<SUBDOMAIN>.workers.dev/ingest?header_X-Logpush-Token=<LOGPUSH_TOKEN>
 ```
+
+**Via Wrangler CLI:**
+```bash
+# Create Logpush job with proper headers in URL
+wrangler logpush create \
+  --dataset="ai_gateway_log" \
+  --destination="https://cf-aigw-logpush-dd-decripter.polyfill.workers.dev/ingest?header_X-Logpush-Token=YOUR_LOGPUSH_TOKEN"
+```
+
+Note: Replace placeholders with your actual values. The `header_` prefix in the URL parameters tells Cloudflare to send these as HTTP headers.
 
 ### 4. Deploy
 
@@ -78,14 +103,14 @@ pnpm run cf-typegen
 
 ### Environment Variables (Secrets)
 
-- `LOGPUSH_TOKEN`: Shared secret for authenticating Logpush requests
+- `LOGPUSH_TOKEN`: Shared secret for authenticating Logpush requests (uses constant-time comparison)
 - `PRIVATE_KEY`: RSA private key for decrypting log fields
+- `DD_API_KEY`: Datadog API key for log ingestion
 - `DD_LOGS_ENDPOINT` (optional): Datadog logs endpoint URL. Defaults to `https://http-intake.logs.datadoghq.com/api/v2/logs` (US1)
 
 ### Headers
 
-- `X-Logpush-Token`: Must match `LOGPUSH_TOKEN` secret
-- `DD-API-KEY`: Datadog API key (passed through from Logpush URL)
+- `X-Logpush-Token`: Must match `LOGPUSH_TOKEN` secret (uses constant-time comparison for security)
 
 ### Datadog Configuration
 
@@ -117,7 +142,6 @@ Set `DD_LOGS_ENDPOINT` based on your Datadog region:
 curl -X POST http://localhost:8787/ingest \
   -H "Content-Type: application/json" \
   -H "X-Logpush-Token: your-test-token" \
-  -H "DD-API-KEY: your-datadog-api-key" \
   -d @test-payload.json
 ```
 

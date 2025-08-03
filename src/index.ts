@@ -36,17 +36,30 @@ interface LogEntry {
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		try {
+			// Helper function for constant time string comparison
+			const timingSafeEqual = (a: string, b: string): boolean => {
+				try {
+					const encoder = new TextEncoder();
+					const aBytes = encoder.encode(a);
+					const bBytes = encoder.encode(b);
+					
+					// Note: This will throw if lengths differ, but catching the error
+					// might still leak timing information. For maximum security,
+					// ensure tokens are always the same length.
+					return crypto.subtle.timingSafeEqual(aBytes, bBytes);
+				} catch {
+					// Length mismatch or other error
+					return false;
+				}
+			};
+
 			// 1. Validate shared token authentication
 			const authToken = request.headers.get('X-Logpush-Token');
-			if (authToken !== env.LOGPUSH_TOKEN) {
+			if (!authToken || !timingSafeEqual(authToken, env.LOGPUSH_TOKEN)) {
 				return new Response('unauthorized', { status: 401 });
 			}
 
-			// 2. Get Datadog API key from headers
-			const ddApiKey = request.headers.get('DD-API-KEY');
-			if (!ddApiKey) {
-				return new Response('Missing DD-API-KEY header', { status: 400 });
-			}
+			// 2. Use Datadog API key from environment
 
 			// 3. Parse incoming JSON
 			const encrypted: LogEntry = await request.json();
@@ -147,7 +160,7 @@ export default {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						'DD-API-KEY': ddApiKey,
+						'DD-API-KEY': env.DD_API_KEY,
 					},
 					body: JSON.stringify(datadogPayload),
 				}

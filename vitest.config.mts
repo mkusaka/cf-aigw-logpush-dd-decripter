@@ -39,6 +39,7 @@ export default defineWorkersConfig({
 					bindings: {
 						LOGPUSH_TOKEN: 'test-token-12345',
 						PRIVATE_KEY: TEST_PRIVATE_KEY,
+						DD_API_KEY: 'test-dd-api-key',
 					},
 				},
 			},

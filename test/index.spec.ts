@@ -130,23 +130,6 @@ hQIDAQAB
 		expect(await response.text()).toBe('unauthorized');
 	});
 
-	it('should reject requests without DD-API-KEY', async () => {
-		const request = new IncomingRequest('http://example.com/ingest', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
-			},
-			body: JSON.stringify({}),
-		});
-
-		const ctx = createExecutionContext();
-		const response = await worker.fetch(request, env, ctx);
-		await waitOnExecutionContext(ctx);
-
-		expect(response.status).toBe(400);
-		expect(await response.text()).toBe('Missing DD-API-KEY header');
-	});
 
 	it('should decrypt encrypted fields and forward to Datadog', async () => {
 		// Prepare test data
@@ -184,7 +167,6 @@ hQIDAQAB
 			headers: {
 				'Content-Type': 'application/json',
 				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
-				'DD-API-KEY': TEST_DD_API_KEY,
 			},
 			body: JSON.stringify(logEntry),
 		});
@@ -239,7 +221,6 @@ hQIDAQAB
 			headers: {
 				'Content-Type': 'application/json',
 				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
-				'DD-API-KEY': TEST_DD_API_KEY,
 			},
 			body: JSON.stringify(logEntry),
 		});
