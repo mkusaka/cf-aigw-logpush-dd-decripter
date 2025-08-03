@@ -138,8 +138,11 @@ export default {
 				...decrypted,
 			}];
 
+			// Use configurable endpoint with default to US1 region
+			const ddEndpoint = env.DD_LOGS_ENDPOINT || 'https://http-intake.logs.datadoghq.com/api/v2/logs';
+			
 			const datadogResponse = await fetch(
-				'https://http-intake.logs.ap1.datadoghq.com/api/v2/logs',
+				ddEndpoint,
 				{
 					method: 'POST',
 					headers: {

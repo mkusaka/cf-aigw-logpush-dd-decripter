@@ -80,6 +80,7 @@ pnpm run cf-typegen
 
 - `LOGPUSH_TOKEN`: Shared secret for authenticating Logpush requests
 - `PRIVATE_KEY`: RSA private key for decrypting log fields
+- `DD_LOGS_ENDPOINT` (optional): Datadog logs endpoint URL. Defaults to `https://http-intake.logs.datadoghq.com/api/v2/logs` (US1)
 
 ### Headers
 
@@ -95,6 +96,17 @@ The Worker sends logs to Datadog with the following attributes:
 - `ddtags`: env:prod,team:infra
 
 Modify these in `src/index.ts` as needed.
+
+### Datadog Regional Endpoints
+
+Set `DD_LOGS_ENDPOINT` based on your Datadog region:
+
+- **US1**: `https://http-intake.logs.datadoghq.com/api/v2/logs` (default)
+- **US3**: `https://http-intake.logs.us3.datadoghq.com/api/v2/logs`
+- **US5**: `https://http-intake.logs.us5.datadoghq.com/api/v2/logs`
+- **EU**: `https://http-intake.logs.datadoghq.eu/api/v2/logs`
+- **AP1**: `https://http-intake.logs.ap1.datadoghq.com/api/v2/logs`
+- **US1-FED**: `https://http-intake.logs.ddog-gov.com/api/v2/logs`
 
 ## Testing
 
