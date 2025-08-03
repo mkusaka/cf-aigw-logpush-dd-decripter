@@ -165,3 +165,7 @@ dist
 .env*
 !.env.example
 .wrangler/
+
+# Test keys
+test_*.pem
+*.pem
