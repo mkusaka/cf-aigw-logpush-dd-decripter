@@ -413,7 +413,6 @@ export default {
 				const logData = {
 					timestamp: now.toISOString(),
 					request_id: requestId,
-					encrypted_entries: logEntries,
 					decrypted_entries: decryptedEntries,
 					decryption_errors: decryptionErrors,
 					metadata: {

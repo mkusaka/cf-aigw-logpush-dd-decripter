@@ -4,7 +4,7 @@ Cloudflare Worker that decrypts AI Gateway logs, stores them in R2, and forwards
 
 ## Overview
 
-This Worker receives encrypted logs from Cloudflare AI Gateway via Logpush, decrypts the sensitive fields (Metadata, RequestBody, ResponseBody), stores both encrypted and decrypted logs in R2 for archival, and forwards the decrypted logs to Datadog Logs API.
+This Worker receives encrypted logs from Cloudflare AI Gateway via Logpush, decrypts the sensitive fields (Metadata, RequestBody, ResponseBody), stores the decrypted logs in R2 for archival, and forwards the decrypted logs to Datadog Logs API.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ Cloudflare AI Gateway → Logpush → Worker → R2 Storage (archive)
 ## Features
 
 - 🔐 Decrypts RSA-OAEP + AES-GCM encrypted fields from AI Gateway logs
-- 📦 Stores both encrypted and decrypted logs in R2 for compliance/analysis
+- 📦 Stores decrypted logs in R2 for compliance/analysis
 - 📊 Forwards decrypted logs to Datadog with proper tagging
 - 🔒 Secure API key management using Worker secrets
 - 🗜️ Handles gzip-compressed log batches
@@ -158,9 +158,9 @@ pnpm run cf-typegen
 
 ### R2 Storage
 
-- `LOG_BUCKET`: R2 bucket binding for storing raw and decrypted logs
+- `LOG_BUCKET`: R2 bucket binding for storing decrypted logs
 - Logs are stored in `YYYY-MM-DD/timestamp_uuid.json` format
-- Each log file contains both encrypted and decrypted entries
+- Each log file contains only decrypted entries (encrypted data is excluded to save space)
 
 ### Headers
 
@@ -222,7 +222,7 @@ wrangler tail --search "Logpush payload"
 View stored logs in R2:
 - **Cloudflare Dashboard**: R2 → `ai-gateway-logs` bucket
 - **File structure**: `YYYY-MM-DD/timestamp_uuid.json`
-- Each file contains both encrypted and decrypted log entries
+- Each file contains decrypted log entries and any decryption errors
 
 ## Testing
 
