@@ -139,14 +139,6 @@ export default {
 				}
 			};
 
-			// DEBUG: Log request details
-			console.log('Request URL:', url.pathname);
-			console.log('Request headers:', {
-				'content-type': request.headers.get('content-type'),
-				'content-encoding': request.headers.get('content-encoding'),
-				'content-length': request.headers.get('content-length'),
-			});
-			
 			// 1. Validate shared token authentication
 			let authToken = request.headers.get('X-Logpush-Token');
 			
@@ -157,21 +149,19 @@ export default {
 			}
 			
 			if (!authToken) {
-				console.log('Authentication failed: No auth token provided');
+				console.error('Authentication failed: No auth token provided');
 				return new Response('unauthorized', { status: 401 });
 			}
 			
 			if (!env.LOGPUSH_TOKEN) {
-				console.log('Authentication failed: LOGPUSH_TOKEN not configured');
+				console.error('Authentication failed: LOGPUSH_TOKEN not configured');
 				return new Response('unauthorized', { status: 401 });
 			}
 			
 			if (!timingSafeEqual(authToken, env.LOGPUSH_TOKEN)) {
-				console.log('Authentication failed: Token mismatch');
-				console.log('Token match (direct compare):', authToken === env.LOGPUSH_TOKEN);
+				console.error('Authentication failed: Token mismatch');
 				return new Response('unauthorized', { status: 401 });
 			}
-			console.log('Authentication successful');
 
 			// 2. Use Datadog API key from environment
 
@@ -194,7 +184,6 @@ export default {
 			
 			// Parse NDJSON (newline-delimited JSON) - Logpush sends multiple entries
 			const lines = bodyText.trim().split('\n');
-			console.log(`Received ${lines.length} log entries`);
 			
 			const logEntries: LogEntry[] = [];
 			for (const line of lines) {
@@ -202,15 +191,6 @@ export default {
 					try {
 						const entry = JSON.parse(line);
 						logEntries.push(entry);
-						// Log first entry structure for debugging
-						if (logEntries.length === 1) {
-							console.log('First entry fields:', Object.keys(entry).join(', '));
-							console.log('Encrypted fields:', 
-								['Metadata', 'RequestBody', 'ResponseBody']
-									.filter(f => entry[f]?.type === 'encrypted')
-									.join(', ') || 'none'
-							);
-						}
 					} catch (e) {
 						console.error('Failed to parse line:', e);
 					}
@@ -299,14 +279,11 @@ export default {
 						try {
 							decrypted[field] = await decryptField(encrypted[field] as EncryptedField);
 							decryptedCount++;
-							console.log(`Decrypted ${field} successfully`);
 						} catch (e) {
 							console.error(`Failed to decrypt ${field}:`, e);
 						}
 					}
 				}
-				
-				console.log(`Entry processed: ${decryptedCount} fields decrypted`);
 				
 				// Store full decrypted entry for R2
 				decryptedEntries.push({
@@ -365,8 +342,6 @@ export default {
 				
 				datadogEntries.push(datadogEntry);
 			}
-			
-			console.log(`Successfully processed ${decryptedEntries.length} log entries`);
 
 			// 6. Store logs in R2
 			try {
@@ -397,8 +372,6 @@ export default {
 						'processed-at': now.toISOString(),
 					}
 				});
-				
-				console.log(`Stored log to R2: ${key}`);
 			} catch (r2Error) {
 				console.error('Failed to store logs in R2:', r2Error);
 				// Continue processing even if R2 storage fails
