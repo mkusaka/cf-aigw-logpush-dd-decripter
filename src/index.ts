@@ -55,7 +55,7 @@ interface LogEntry {
 	RequestBody?: FieldValue;
 	ResponseBody?: FieldValue;
 	
-	// Other fields from the log
+	// Fields actually provided by AI Gateway Logpush
 	Endpoint?: string;
 	Gateway?: string;
 	service?: string;
@@ -65,6 +65,10 @@ interface LogEntry {
 	RateLimited?: boolean | string;
 	StatusCode?: number;
 	Provider?: string;
+	
+	// Note: Performance fields like Duration, tokens_in, tokens_out are available
+	// through AI Gateway API but NOT included in Logpush dataset
+	
 	[key: string]: unknown;
 }
 
