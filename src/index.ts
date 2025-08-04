@@ -116,6 +116,10 @@ interface DatadogLogEntry {
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
+		// Generate request ID for tracking
+		const requestId = crypto.randomUUID();
+		const requestTimestamp = new Date().toISOString();
+		
 		try {
 			// Accept any path for flexibility with Logpush configuration
 			const url = new URL(request.url);
@@ -255,24 +259,51 @@ export default {
 					base64Decode(encObj.data)
 				);
 
-				// Convert to string and parse JSON
+				// Convert to string
 				const plaintext = new TextDecoder().decode(decryptedData);
-				return JSON.parse(plaintext);
+				
+				// Try to parse as JSON, but return as string if it fails
+				try {
+					return JSON.parse(plaintext);
+				} catch (jsonError) {
+					// If not JSON, return as plain string
+					console.log('Decrypted data is not JSON, returning as string:', {
+						preview: plaintext.substring(0, 100),
+						length: plaintext.length,
+						error: jsonError instanceof Error ? jsonError.message : String(jsonError)
+					});
+					return plaintext;
+				}
 			}
 
 			// 5. Decrypt encrypted fields for all entries
 			const decryptedEntries: LogEntry[] = [];
 			const datadogEntries: DatadogLogEntry[] = [];
+			const decryptionErrors: any[] = [];
 			
+			let entryIndex = 0;
 			for (const encrypted of logEntries) {
 				const decrypted: LogEntry = { ...encrypted };
+				const logContext = {
+					requestId,
+					entryIndex,
+					logId: encrypted.logId || 'unknown',
+					timestamp: encrypted.timestamp || requestTimestamp,
+				};
 				
 				// Decrypt Metadata if encrypted
 				if (encrypted.Metadata && typeof encrypted.Metadata === 'object' && 'type' in encrypted.Metadata && encrypted.Metadata.type === 'encrypted') {
 					try {
 						decrypted.Metadata = await decryptField(encrypted.Metadata as EncryptedField);
 					} catch (e) {
-						console.error('Failed to decrypt Metadata:', e);
+						const errorInfo = {
+							field: 'Metadata',
+							error: e instanceof Error ? e.message : String(e),
+							context: logContext,
+							encryptedData: encrypted.Metadata
+						};
+						console.error(`[${requestId}] Failed to decrypt Metadata:`, errorInfo);
+						decryptionErrors.push(errorInfo);
 					}
 				}
 				
@@ -281,7 +312,14 @@ export default {
 					try {
 						decrypted.RequestBody = await decryptField(encrypted.RequestBody as EncryptedField);
 					} catch (e) {
-						console.error('Failed to decrypt RequestBody:', e);
+						const errorInfo = {
+							field: 'RequestBody',
+							error: e instanceof Error ? e.message : String(e),
+							context: logContext,
+							encryptedData: encrypted.RequestBody
+						};
+						console.error(`[${requestId}] Failed to decrypt RequestBody:`, errorInfo);
+						decryptionErrors.push(errorInfo);
 					}
 				}
 				
@@ -290,9 +328,18 @@ export default {
 					try {
 						decrypted.ResponseBody = await decryptField(encrypted.ResponseBody as EncryptedField);
 					} catch (e) {
-						console.error('Failed to decrypt ResponseBody:', e);
+						const errorInfo = {
+							field: 'ResponseBody',
+							error: e instanceof Error ? e.message : String(e),
+							context: logContext,
+							encryptedData: encrypted.ResponseBody
+						};
+						console.error(`[${requestId}] Failed to decrypt ResponseBody:`, errorInfo);
+						decryptionErrors.push(errorInfo);
 					}
 				}
+				
+				entryIndex++;
 				
 				// Store full decrypted entry for R2
 				decryptedEntries.push({
@@ -361,14 +408,18 @@ export default {
 				
 				const logData = {
 					timestamp: now.toISOString(),
-					request_id: crypto.randomUUID(),
+					request_id: requestId,
 					encrypted_entries: logEntries,
 					decrypted_entries: decryptedEntries,
+					decryption_errors: decryptionErrors,
 					metadata: {
 						entry_count: logEntries.length,
 						decrypted_count: decryptedEntries.length,
+						error_count: decryptionErrors.length,
 						source_ip: request.headers.get('cf-connecting-ip'),
 						content_encoding: request.headers.get('content-encoding'),
+						user_agent: request.headers.get('user-agent'),
+						cf_ray: request.headers.get('cf-ray'),
 					}
 				};
 				
@@ -382,7 +433,7 @@ export default {
 					}
 				});
 			} catch (r2Error) {
-				console.error('Failed to store logs in R2:', r2Error);
+				console.error(`[${requestId}] Failed to store logs in R2:`, r2Error);
 				// Continue processing even if R2 storage fails
 			}
 
@@ -405,7 +456,7 @@ export default {
 			);
 
 			if (!datadogResponse.ok) {
-				console.error('Datadog API error:', datadogResponse.status, await datadogResponse.text());
+				console.error(`[${requestId}] Datadog API error:`, datadogResponse.status, await datadogResponse.text());
 				return new Response('Failed to forward to Datadog', { status: 500 });
 			}
 
@@ -413,7 +464,7 @@ export default {
 			return new Response(null, { status: 202 });
 
 		} catch (error) {
-			console.error('Worker error:', error);
+			console.error(`[${requestId}] Worker error:`, error);
 			return new Response('Internal server error', { status: 500 });
 		}
 	},
