@@ -3,4 +3,5 @@ interface Env {
 	PRIVATE_KEY: string;
 	DD_API_KEY: string;
 	DD_LOGS_ENDPOINT?: string;
+	LOG_BUCKET: R2Bucket;
 }

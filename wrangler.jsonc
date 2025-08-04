@@ -10,7 +10,18 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"observability": {
 		"enabled": true
-	}
+	},
+	
+	/**
+	 * R2 Buckets for storing logs
+	 */
+	"r2_buckets": [
+		{
+			"binding": "LOG_BUCKET",
+			"bucket_name": "ai-gateway-logs"
+		}
+	]
+	
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

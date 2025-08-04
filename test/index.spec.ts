@@ -134,8 +134,27 @@ hQIDAQAB
 	it('should decrypt encrypted fields and forward to Datadog', async () => {
 		// Prepare test data
 		const testMetadata = { user: 'test-user', timestamp: Date.now() };
-		const testRequestBody = { prompt: 'Hello AI' };
-		const testResponseBody = { response: 'Hello Human' };
+		const testRequestBody = {
+			model: 'gpt-3.5-turbo',
+			temperature: 0.7,
+			metadata: { user_id: 'test-123' },
+			max_tokens: 100,
+			stream: false
+		};
+		const testResponseBody = {
+			id: 'response-123',
+			type: 'message',
+			role: 'assistant',
+			model: 'gpt-3.5-turbo',
+			content: 'Hello Human',
+			stop_reason: 'stop_sequence',
+			stop_sequence: null,
+			usage: {
+				input_tokens: 10,
+				output_tokens: 20,
+				service_tier: 'standard'
+			}
+		};
 
 		// Encrypt test data
 		const encryptedMetadata = await encryptTestData(testMetadata);
@@ -188,7 +207,6 @@ hQIDAQAB
 			service: 'ai-gateway',
 			host: 'ai-gateway-host',
 			ddtags: 'env:prod,team:infra',
-			logId: 'test-log-123',
 			Metadata: testMetadata,
 			RequestBody: testRequestBody,
 			ResponseBody: testResponseBody,
@@ -233,6 +251,13 @@ hQIDAQAB
 		global.fetch = originalFetch;
 
 		expect(response.status).toBe(202);
-		expect(datadogPayload[0]).toMatchObject(logEntry);
+		expect(datadogPayload[0]).toMatchObject({
+			ddsource: 'cloudflare',
+			service: 'ai-gateway',
+			host: 'ai-gateway-host',
+			ddtags: 'env:prod,team:infra',
+			Metadata: { plainField: 'not encrypted' },
+			ResponseBody: {},
+		});
 	});
 });

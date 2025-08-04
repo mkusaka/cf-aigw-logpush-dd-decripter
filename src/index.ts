@@ -12,7 +12,42 @@ interface EncryptedField {
 	data: string;
 }
 
-type FieldValue = EncryptedField | unknown;
+interface RequestBodyData {
+	model?: string;
+	temperature?: number;
+	metadata?: {
+		user_id?: string;
+		[key: string]: unknown;
+	};
+	max_tokens?: number;
+	thinking?: {
+		budget_tokens?: number;
+		type?: string;
+	};
+	stream?: boolean;
+	[key: string]: unknown;
+}
+
+interface ResponseBodyData {
+	id?: string;
+	type?: string;
+	role?: string;
+	model?: string;
+	content?: string;
+	stop_reason?: string | null;
+	stop_sequence?: string | null;
+	usage?: {
+		input_tokens?: number;
+		cache_creation_input_tokens?: number;
+		cache_read_input_tokens?: number;
+		output_tokens?: number;
+		service_tier?: string;
+		[key: string]: unknown;
+	};
+	[key: string]: unknown;
+}
+
+type FieldValue = EncryptedField | RequestBodyData | ResponseBodyData | unknown;
 
 interface LogEntry {
 	// Encrypted fields
@@ -24,18 +59,69 @@ interface LogEntry {
 	Endpoint?: string;
 	Gateway?: string;
 	service?: string;
-	Cached?: string;
+	Cached?: boolean | string;
 	Model?: string;
 	host?: string;
-	RateLimited?: string;
+	RateLimited?: boolean | string;
 	StatusCode?: number;
 	Provider?: string;
 	[key: string]: unknown;
 }
 
+interface DatadogLogEntry {
+	ddsource: string;
+	service: string;
+	host: string;
+	ddtags: string;
+	Cached?: boolean | string;
+	Endpoint?: string;
+	Gateway?: string;
+	Metadata?: unknown;
+	Model?: string;
+	Provider?: string;
+	RateLimited?: boolean | string;
+	StatusCode?: number;
+	RequestBody?: {
+		model?: string;
+		temperature?: number;
+		metadata?: {
+			user_id?: string;
+			[key: string]: unknown;
+		};
+		max_tokens?: number;
+		thinking?: {
+			budget_tokens?: number;
+			type?: string;
+		};
+		stream?: boolean;
+	};
+	ResponseBody?: {
+		id?: string;
+		type?: string;
+		role?: string;
+		model?: string;
+		content?: string;
+		stop_reason?: string | null;
+		stop_sequence?: string | null;
+		usage?: {
+			input_tokens?: number;
+			cache_creation_input_tokens?: number;
+			cache_read_input_tokens?: number;
+			output_tokens?: number;
+			service_tier?: string;
+			[key: string]: unknown;
+		};
+	};
+}
+
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		try {
+			// Accept any path for flexibility with Logpush configuration
+			const url = new URL(request.url);
+			if (!url.pathname.startsWith('/')) {
+				return new Response('not found', { status: 404 });
+			}
 			// Helper function for constant time string comparison
 			const timingSafeEqual = (a: string, b: string): boolean => {
 				try {
@@ -53,16 +139,83 @@ export default {
 				}
 			};
 
+			// DEBUG: Log request details
+			console.log('Request URL:', url.pathname);
+			console.log('Request headers:', {
+				'content-type': request.headers.get('content-type'),
+				'content-encoding': request.headers.get('content-encoding'),
+				'content-length': request.headers.get('content-length'),
+			});
+			
 			// 1. Validate shared token authentication
-			const authToken = request.headers.get('X-Logpush-Token');
-			if (!authToken || !timingSafeEqual(authToken, env.LOGPUSH_TOKEN)) {
+			let authToken = request.headers.get('X-Logpush-Token');
+			
+			// CloudFlare seems to append extra parameters to the token
+			// Extract just the token part before any '?' character
+			if (authToken && authToken.includes('?')) {
+				authToken = authToken.split('?')[0];
+			}
+			
+			if (!authToken) {
+				console.log('Authentication failed: No auth token provided');
 				return new Response('unauthorized', { status: 401 });
 			}
+			
+			if (!env.LOGPUSH_TOKEN) {
+				console.log('Authentication failed: LOGPUSH_TOKEN not configured');
+				return new Response('unauthorized', { status: 401 });
+			}
+			
+			if (!timingSafeEqual(authToken, env.LOGPUSH_TOKEN)) {
+				console.log('Authentication failed: Token mismatch');
+				console.log('Token match (direct compare):', authToken === env.LOGPUSH_TOKEN);
+				return new Response('unauthorized', { status: 401 });
+			}
+			console.log('Authentication successful');
 
 			// 2. Use Datadog API key from environment
 
-			// 3. Parse incoming JSON
-			const encrypted: LogEntry = await request.json();
+			// 3. Parse incoming JSON (handle gzip if needed)
+			let bodyText: string;
+			const contentEncoding = request.headers.get('content-encoding');
+			
+			if (contentEncoding === 'gzip') {
+				const gzippedBody = await request.arrayBuffer();
+				const decompressedStream = new DecompressionStream('gzip');
+				const writer = decompressedStream.writable.getWriter();
+				writer.write(new Uint8Array(gzippedBody));
+				writer.close();
+				
+				const decompressedBody = await new Response(decompressedStream.readable).arrayBuffer();
+				bodyText = new TextDecoder().decode(decompressedBody);
+			} else {
+				bodyText = await request.text();
+			}
+			
+			// Parse NDJSON (newline-delimited JSON) - Logpush sends multiple entries
+			const lines = bodyText.trim().split('\n');
+			console.log(`Received ${lines.length} log entries`);
+			
+			const logEntries: LogEntry[] = [];
+			for (const line of lines) {
+				if (line.trim()) {
+					try {
+						const entry = JSON.parse(line);
+						logEntries.push(entry);
+						// Log first entry structure for debugging
+						if (logEntries.length === 1) {
+							console.log('First entry fields:', Object.keys(entry).join(', '));
+							console.log('Encrypted fields:', 
+								['Metadata', 'RequestBody', 'ResponseBody']
+									.filter(f => entry[f]?.type === 'encrypted')
+									.join(', ') || 'none'
+							);
+						}
+					} catch (e) {
+						console.error('Failed to parse line:', e);
+					}
+				}
+			}
 
 			// 4. Import RSA private key
 			const pemHeader = '-----BEGIN PRIVATE KEY-----';
@@ -133,23 +286,126 @@ export default {
 				return JSON.parse(plaintext);
 			}
 
-			// 5. Decrypt encrypted fields
-			const decrypted: LogEntry = { ...encrypted };
+			// 5. Decrypt encrypted fields for all entries
+			const decryptedEntries: LogEntry[] = [];
+			const datadogEntries: DatadogLogEntry[] = [];
 			
-			for (const field of ['Metadata', 'RequestBody', 'ResponseBody']) {
-				if (encrypted[field]?.type === 'encrypted') {
-					decrypted[field] = await decryptField(encrypted[field] as EncryptedField);
+			for (const encrypted of logEntries) {
+				const decrypted: LogEntry = { ...encrypted };
+				let decryptedCount = 0;
+				
+				for (const field of ['Metadata', 'RequestBody', 'ResponseBody']) {
+					if (encrypted[field]?.type === 'encrypted') {
+						try {
+							decrypted[field] = await decryptField(encrypted[field] as EncryptedField);
+							decryptedCount++;
+							console.log(`Decrypted ${field} successfully`);
+						} catch (e) {
+							console.error(`Failed to decrypt ${field}:`, e);
+						}
+					}
 				}
+				
+				console.log(`Entry processed: ${decryptedCount} fields decrypted`);
+				
+				// Store full decrypted entry for R2
+				decryptedEntries.push({
+					ddsource: 'cloudflare',
+					service: 'ai-gateway',
+					host: 'ai-gateway-host',
+					ddtags: 'env:prod,team:infra',
+					...decrypted,
+				});
+				
+				// Create filtered entry for Datadog
+				const datadogEntry: DatadogLogEntry = {
+					ddsource: 'cloudflare',
+					service: 'ai-gateway',
+					host: 'ai-gateway-host',
+					ddtags: 'env:prod,team:infra',
+					Cached: decrypted.Cached,
+					Endpoint: decrypted.Endpoint,
+					Gateway: decrypted.Gateway,
+					Metadata: decrypted.Metadata,
+					Model: decrypted.Model,
+					Provider: decrypted.Provider,
+					RateLimited: decrypted.RateLimited,
+					StatusCode: decrypted.StatusCode,
+				};
+				
+				// Filter RequestBody fields
+				if (decrypted.RequestBody && typeof decrypted.RequestBody === 'object' && 
+					!('type' in decrypted.RequestBody && decrypted.RequestBody.type === 'encrypted')) {
+					const requestBody = decrypted.RequestBody as RequestBodyData;
+					datadogEntry.RequestBody = {
+						model: requestBody.model,
+						temperature: requestBody.temperature,
+						metadata: requestBody.metadata,
+						max_tokens: requestBody.max_tokens,
+						thinking: requestBody.thinking,
+						stream: requestBody.stream,
+					};
+				}
+				
+				// Filter ResponseBody fields
+				if (decrypted.ResponseBody && typeof decrypted.ResponseBody === 'object' && 
+					!('type' in decrypted.ResponseBody && decrypted.ResponseBody.type === 'encrypted')) {
+					const responseBody = decrypted.ResponseBody as ResponseBodyData;
+					datadogEntry.ResponseBody = {
+						id: responseBody.id,
+						type: responseBody.type,
+						role: responseBody.role,
+						model: responseBody.model,
+						content: responseBody.content,
+						stop_reason: responseBody.stop_reason,
+						stop_sequence: responseBody.stop_sequence,
+						usage: responseBody.usage,
+					};
+				}
+				
+				datadogEntries.push(datadogEntry);
+			}
+			
+			console.log(`Successfully processed ${decryptedEntries.length} log entries`);
+
+			// 6. Store logs in R2
+			try {
+				const now = new Date();
+				const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+				const timestamp = now.toISOString().replace(/[:.]/g, '-'); // Replace : and . for filename
+				const key = `${dateStr}/${timestamp}_${crypto.randomUUID()}.json`;
+				
+				const logData = {
+					timestamp: now.toISOString(),
+					request_id: crypto.randomUUID(),
+					encrypted_entries: logEntries,
+					decrypted_entries: decryptedEntries,
+					metadata: {
+						entry_count: logEntries.length,
+						decrypted_count: decryptedEntries.length,
+						source_ip: request.headers.get('cf-connecting-ip'),
+						content_encoding: request.headers.get('content-encoding'),
+					}
+				};
+				
+				await env.LOG_BUCKET.put(key, JSON.stringify(logData, null, 2), {
+					httpMetadata: {
+						contentType: 'application/json',
+					},
+					customMetadata: {
+						'log-type': 'ai-gateway',
+						'processed-at': now.toISOString(),
+					}
+				});
+				
+				console.log(`Stored log to R2: ${key}`);
+			} catch (r2Error) {
+				console.error('Failed to store logs in R2:', r2Error);
+				// Continue processing even if R2 storage fails
 			}
 
-			// 6. Forward to Datadog
-			const datadogPayload = [{
-				ddsource: 'cloudflare',
-				service: 'ai-gateway',
-				host: 'ai-gateway-host',
-				ddtags: 'env:prod,team:infra',
-				...decrypted,
-			}];
+			// 7. Forward to Datadog
+			const datadogPayload = datadogEntries;
 
 			// Use configurable endpoint with default to US1 region
 			const ddEndpoint = env.DD_LOGS_ENDPOINT || 'https://http-intake.logs.datadoghq.com/api/v2/logs';
