@@ -140,13 +140,7 @@ export default {
 			};
 
 			// 1. Validate shared token authentication
-			let authToken = request.headers.get('X-Logpush-Token');
-			
-			// CloudFlare seems to append extra parameters to the token
-			// Extract just the token part before any '?' character
-			if (authToken && authToken.includes('?')) {
-				authToken = authToken.split('?')[0];
-			}
+			const authToken = request.headers.get('X-Logpush-Token');
 			
 			if (!authToken) {
 				console.error('Authentication failed: No auth token provided');
@@ -274,10 +268,11 @@ export default {
 				const decrypted: LogEntry = { ...encrypted };
 				let decryptedCount = 0;
 				
-				for (const field of ['Metadata', 'RequestBody', 'ResponseBody']) {
-					if (encrypted[field]?.type === 'encrypted') {
+				for (const field of ['Metadata', 'RequestBody', 'ResponseBody'] as const) {
+					const fieldValue = encrypted[field];
+					if (fieldValue && typeof fieldValue === 'object' && 'type' in fieldValue && fieldValue.type === 'encrypted') {
 						try {
-							decrypted[field] = await decryptField(encrypted[field] as EncryptedField);
+							decrypted[field] = await decryptField(fieldValue as EncryptedField);
 							decryptedCount++;
 						} catch (e) {
 							console.error(`Failed to decrypt ${field}:`, e);
