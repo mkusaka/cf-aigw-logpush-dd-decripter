@@ -44,5 +44,15 @@ export default defineWorkersConfig({
 				},
 			},
 		},
+		coverage: {
+			provider: 'v8',
+			reporter: ['text', 'html', 'lcov'],
+			exclude: [
+				'node_modules/**',
+				'test/**',
+				'vitest.config.*',
+				'worker-configuration.d.ts',
+			],
+		},
 	},
 });

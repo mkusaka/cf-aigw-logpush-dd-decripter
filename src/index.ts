@@ -266,13 +266,11 @@ export default {
 			
 			for (const encrypted of logEntries) {
 				const decrypted: LogEntry = { ...encrypted };
-				let decryptedCount = 0;
 				
 				// Decrypt Metadata if encrypted
 				if (encrypted.Metadata && typeof encrypted.Metadata === 'object' && 'type' in encrypted.Metadata && encrypted.Metadata.type === 'encrypted') {
 					try {
 						decrypted.Metadata = await decryptField(encrypted.Metadata as EncryptedField);
-						decryptedCount++;
 					} catch (e) {
 						console.error('Failed to decrypt Metadata:', e);
 					}
@@ -282,7 +280,6 @@ export default {
 				if (encrypted.RequestBody && typeof encrypted.RequestBody === 'object' && 'type' in encrypted.RequestBody && encrypted.RequestBody.type === 'encrypted') {
 					try {
 						decrypted.RequestBody = await decryptField(encrypted.RequestBody as EncryptedField);
-						decryptedCount++;
 					} catch (e) {
 						console.error('Failed to decrypt RequestBody:', e);
 					}
@@ -292,7 +289,6 @@ export default {
 				if (encrypted.ResponseBody && typeof encrypted.ResponseBody === 'object' && 'type' in encrypted.ResponseBody && encrypted.ResponseBody.type === 'encrypted') {
 					try {
 						decrypted.ResponseBody = await decryptField(encrypted.ResponseBody as EncryptedField);
-						decryptedCount++;
 					} catch (e) {
 						console.error('Failed to decrypt ResponseBody:', e);
 					}

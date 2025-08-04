@@ -1,4 +1,4 @@
-import { env, createExecutionContext, waitOnExecutionContext, SELF } from 'cloudflare:test';
+import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
 import worker from '../src/index';
 
@@ -9,37 +9,6 @@ const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 describe('AI Gateway Logpush Decrypter', () => {
 	// Test credentials - DO NOT use in production
 	const TEST_LOGPUSH_TOKEN = 'test-token-12345';
-	const TEST_DD_API_KEY = 'test-dd-api-key';
-	
-	// Test RSA key pair (2048-bit) - Generated for testing only
-	const TEST_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
-MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDMiU7zon8ExdD6
-yppS9oo6SNirtym/NpKEpm+V7c8e54zuwQnb5E+Z81YLucwyZGrm7zvc2tpWwt5t
-uiLcnvncJOeHM97ee2IY8yl4gJKDJHkOG38TVwSxTej0ocQQVXhB6ZvCxc+J93vT
-bt8OiJMbLP/k4BMWxvhaNgKknmnvWbRRLcVSglBpWdgIh37zfzI4LA4LBGwKLwKy
-4ZoViJNrLRE1ebr3X/kUxBzXj96d05TyyqhOHaaY8SF4ZrHONFUY6p5rOnN0zdUF
-qSnQjbPVaMGmNDn2rPYPpW/a6UOiYNE9n59zz8DhzWIxTtfchTsV6TCErViJM9mR
-rNHA+YeFAgMBAAECggEAFD0+D8Ozl/BPJpHnxW/Z67yLnCpKuj4XL4McpZRbm25E
-NtfpNtYXvl8i05Q2DYJ8RY/Et6z8T/uGcQsrKfOdO9h3BJzwX8mLwnZFU0Q9uzZf
-uDKmV26T60uPUq2zLf6XIMaSACr8x2Uy3pApCFIhZF4GkEpP+UAFEUAo8MswJlvn
-v4UuBjs6DwHEM9SkxdO6inHr8Vp1O36YR3u+QE4CL8PBPWXMYbwPI9ah/uj0PQ14
-xWvBgl7wRoDuZ2v8NYNy3f7HSZDPDz3D2LRYwmTi5h5cLg7NUTV34M9BZrMlJYn1
-8f1xHdMUoo4p3qb3PfhM7MoxuhbsiDaTYpxVKfLO/QKBgQDl4FNGFYwdOEsb4hWM
-WC5mEnomvrhXmuWG5iJEXM2NgzZFhFMRBcCWbsbiksutQzcfHO9OgSeHGa1+MXKL
-j7rXHLA2WyWCXIRkgcpxckY1ToL5CQIK/9SK9PUnd74un7k8+kPnxsp4xOYa7gO6
-qAhqoofDZhwEZta8j4faWMSk/wKBgQDjx8goptNe9gJAm2rvyQxVALAcnm4p6VA0
-EcAEM846dQ10XZ5xHgPvWAiaaPez5l3b2EiVNOIfcLCD9X/8qAvQRkxvjLPs3nY9
-sPutU0ePxxMrP1LQqAVWmvq5w22Qs0PD86Q67A45e1ZYo7MY55tfY4GybXQ14/LI
-FrjuKJy/ewKBgQDj8nVBCv7cvsSkCqWpfIvOBcaBAyBTJrMx+KTEO25NRG6dsqCY
-Qab+xSyM4ln8HqnbPVsD8siajFjgyPG3+Leitbz6uZlRUqKp85YmttVt6MOxZUBU
-XemKPWuYToIVQ6dxEw4hGJwP89flnl2uSw/FhhOwLGHd74hChOWHG/0rSwKBgQDh
-wCpvp8/LyPQ4hhB5MIBJatIguyCh5zv3LzRotdOJ+mLoVrTmlYH+3/g+2RPOt92E
-OxrMzkniMTSwxEsh5Ic418N/tyrH8z+rKtJ1WRmOtRYZgbwZUr1ftWATZk4b4J+k
-AMBfKX97lvLgDPY/E6TY6G0tou9PTelcR7DnUVbxKwKBgQC3++0Nq9VdmPgaZXPZ
-+NHSnPtOsMvSJ6szfKc6f6u0jSt4ncPqyeFcLael+sIk4Euwozw96o/y+uQ845Ra
-aScVcXW9HrdVk3GXJkypzc9uCb/lOz/H4zHDDNlsCe7rRujua9xUS/nMfX8qsFhp
-Lp+D3//srHwHTx32sdycdTi8AA==
------END PRIVATE KEY-----`;
 	
 	const TEST_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzIlO86J/BMXQ+sqaUvaK
@@ -259,5 +228,430 @@ hQIDAQAB
 			Metadata: { plainField: 'not encrypted' },
 			ResponseBody: {},
 		});
+	});
+
+	it('should accept any path for flexibility with Logpush', async () => {
+		const request = new IncomingRequest('http://example.com/any/path/here', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
+			},
+			body: JSON.stringify({ test: 'data' }),
+		});
+
+		// Mock fetch
+		const originalFetch = global.fetch;
+		let datadogPayload: any = null;
+		
+		global.fetch = async (input: any, init?: any) => {
+			if (typeof input === 'string' && input.includes('datadoghq.com')) {
+				datadogPayload = JSON.parse(init.body);
+				return new Response(null, { status: 202 });
+			}
+			return originalFetch(input, init);
+		};
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		// Restore original fetch
+		global.fetch = originalFetch;
+
+		expect(response.status).toBe(202);
+		expect(datadogPayload).toBeTruthy();
+	});
+
+	it('should reject requests with wrong token', async () => {
+		const request = new IncomingRequest('http://example.com/ingest', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Logpush-Token': 'wrong-token',
+			},
+			body: JSON.stringify({}),
+		});
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(401);
+		expect(await response.text()).toBe('unauthorized');
+	});
+
+	it('should handle gzip compressed requests', async () => {
+		// Prepare test data
+		const logEntry = {
+			logId: 'test-log-789',
+			timestamp: new Date().toISOString(),
+			Metadata: { plainField: 'gzip test' },
+		};
+
+		// Compress with gzip
+		const encoder = new TextEncoder();
+		const data = encoder.encode(JSON.stringify(logEntry));
+		const compressionStream = new CompressionStream('gzip');
+		const writer = compressionStream.writable.getWriter();
+		writer.write(data);
+		writer.close();
+		
+		const compressedData = await new Response(compressionStream.readable).arrayBuffer();
+
+		// Mock fetch
+		const originalFetch = global.fetch;
+		let datadogPayload: any = null;
+		
+		global.fetch = async (input: any, init?: any) => {
+			if (typeof input === 'string' && input.includes('datadoghq.com')) {
+				datadogPayload = JSON.parse(init.body);
+				return new Response(null, { status: 202 });
+			}
+			return originalFetch(input, init);
+		};
+
+		const request = new IncomingRequest('http://example.com/ingest', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Content-Encoding': 'gzip',
+				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
+			},
+			body: compressedData,
+		});
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		// Restore original fetch
+		global.fetch = originalFetch;
+
+		expect(response.status).toBe(202);
+		expect(datadogPayload).toBeTruthy();
+		expect(datadogPayload[0]).toMatchObject({
+			Metadata: { plainField: 'gzip test' },
+		});
+	});
+
+	it('should handle multiple log entries in NDJSON format', async () => {
+		const logEntry1 = {
+			logId: 'test-log-001',
+			timestamp: new Date().toISOString(),
+			Metadata: { entry: 1 },
+		};
+		const logEntry2 = {
+			logId: 'test-log-002',
+			timestamp: new Date().toISOString(),
+			Metadata: { entry: 2 },
+		};
+		const logEntry3 = {
+			logId: 'test-log-003',
+			timestamp: new Date().toISOString(),
+			Metadata: { entry: 3 },
+		};
+
+		// Create NDJSON format
+		const ndjson = [
+			JSON.stringify(logEntry1),
+			JSON.stringify(logEntry2),
+			JSON.stringify(logEntry3),
+		].join('\n');
+
+		// Mock fetch
+		const originalFetch = global.fetch;
+		let datadogPayload: any = null;
+		
+		global.fetch = async (input: any, init?: any) => {
+			if (typeof input === 'string' && input.includes('datadoghq.com')) {
+				datadogPayload = JSON.parse(init.body);
+				return new Response(null, { status: 202 });
+			}
+			return originalFetch(input, init);
+		};
+
+		const request = new IncomingRequest('http://example.com/ingest', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
+			},
+			body: ndjson,
+		});
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		// Restore original fetch
+		global.fetch = originalFetch;
+
+		expect(response.status).toBe(202);
+		expect(datadogPayload).toBeTruthy();
+		expect(datadogPayload.length).toBe(3);
+		expect(datadogPayload[0]).toMatchObject({ Metadata: { entry: 1 } });
+		expect(datadogPayload[1]).toMatchObject({ Metadata: { entry: 2 } });
+		expect(datadogPayload[2]).toMatchObject({ Metadata: { entry: 3 } });
+	});
+
+	it('should handle decryption errors gracefully', async () => {
+		const logEntry = {
+			logId: 'test-log-bad',
+			timestamp: new Date().toISOString(),
+			Metadata: { 
+				type: 'encrypted',
+				key: 'invalid-base64-!!!',
+				iv: 'bad-iv',
+				data: 'bad-data'
+			},
+			RequestBody: { plainField: 'not encrypted' },
+		};
+
+		// Mock fetch
+		const originalFetch = global.fetch;
+		let datadogPayload: any = null;
+		
+		global.fetch = async (input: any, init?: any) => {
+			if (typeof input === 'string' && input.includes('datadoghq.com')) {
+				datadogPayload = JSON.parse(init.body);
+				return new Response(null, { status: 202 });
+			}
+			return originalFetch(input, init);
+		};
+
+		const request = new IncomingRequest('http://example.com/ingest', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
+			},
+			body: JSON.stringify(logEntry),
+		});
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		// Restore original fetch
+		global.fetch = originalFetch;
+
+		// Should still succeed but skip the failed decryption
+		expect(response.status).toBe(202);
+		expect(datadogPayload).toBeTruthy();
+		// Metadata should remain encrypted due to error
+		expect(datadogPayload[0].Metadata).toMatchObject({
+			type: 'encrypted',
+			key: 'invalid-base64-!!!',
+			iv: 'bad-iv',
+			data: 'bad-data'
+		});
+	});
+
+	it('should handle Datadog API errors', async () => {
+		const logEntry = {
+			logId: 'test-log-dd-error',
+			timestamp: new Date().toISOString(),
+			Metadata: { test: 'datadog error' },
+		};
+
+		// Mock fetch to return error
+		const originalFetch = global.fetch;
+		
+		global.fetch = async (input: any, init?: any) => {
+			if (typeof input === 'string' && input.includes('datadoghq.com')) {
+				return new Response('Bad Request', { status: 400 });
+			}
+			return originalFetch(input, init);
+		};
+
+		const request = new IncomingRequest('http://example.com/ingest', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
+			},
+			body: JSON.stringify(logEntry),
+		});
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		// Restore original fetch
+		global.fetch = originalFetch;
+
+		expect(response.status).toBe(500);
+		expect(await response.text()).toBe('Failed to forward to Datadog');
+	});
+
+	it('should handle invalid JSON in request body', async () => {
+		// Mock fetch to not be called
+		const originalFetch = global.fetch;
+		let datadogCalled = false;
+		
+		global.fetch = async (input: any, init?: any) => {
+			if (typeof input === 'string' && input.includes('datadoghq.com')) {
+				datadogCalled = true;
+				return new Response(null, { status: 202 });
+			}
+			return originalFetch(input, init);
+		};
+
+		const request = new IncomingRequest('http://example.com/ingest', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
+			},
+			body: 'invalid json {{{',
+		});
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		// Restore original fetch
+		global.fetch = originalFetch;
+
+		// Should process empty array when JSON parsing fails for individual lines
+		expect(response.status).toBe(202);
+		expect(datadogCalled).toBe(true);
+	});
+
+	it('should handle empty request body', async () => {
+		// Mock fetch
+		const originalFetch = global.fetch;
+		let datadogPayload: any = null;
+		
+		global.fetch = async (input: any, init?: any) => {
+			if (typeof input === 'string' && input.includes('datadoghq.com')) {
+				datadogPayload = JSON.parse(init.body);
+				return new Response(null, { status: 202 });
+			}
+			return originalFetch(input, init);
+		};
+
+		const request = new IncomingRequest('http://example.com/ingest', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
+			},
+			body: '',
+		});
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		// Restore original fetch
+		global.fetch = originalFetch;
+
+		expect(response.status).toBe(202);
+		expect(datadogPayload).toEqual([]);
+	});
+
+	it('should handle R2 storage errors gracefully', async () => {
+		// Create a modified env with failing R2 bucket
+		const failingEnv = {
+			...env,
+			LOG_BUCKET: {
+				put: async () => {
+					throw new Error('R2 storage failed');
+				}
+			}
+		};
+
+		const logEntry = {
+			logId: 'test-log-r2-error',
+			timestamp: new Date().toISOString(),
+			Metadata: { test: 'r2 error' },
+		};
+
+		// Mock fetch
+		const originalFetch = global.fetch;
+		let datadogPayload: any = null;
+		
+		global.fetch = async (input: any, init?: any) => {
+			if (typeof input === 'string' && input.includes('datadoghq.com')) {
+				datadogPayload = JSON.parse(init.body);
+				return new Response(null, { status: 202 });
+			}
+			return originalFetch(input, init);
+		};
+
+		const request = new IncomingRequest('http://example.com/ingest', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
+			},
+			body: JSON.stringify(logEntry),
+		});
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, failingEnv as any, ctx);
+		await waitOnExecutionContext(ctx);
+
+		// Restore original fetch
+		global.fetch = originalFetch;
+
+		// Should still succeed despite R2 error
+		expect(response.status).toBe(202);
+		expect(datadogPayload).toBeTruthy();
+	});
+
+	it('should handle worker errors', async () => {
+		// Create env without LOGPUSH_TOKEN to trigger internal error path
+		const badEnv = {
+			...env,
+			LOGPUSH_TOKEN: undefined
+		};
+
+		const request = new IncomingRequest('http://example.com/ingest', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
+			},
+			body: JSON.stringify({}),
+		});
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, badEnv as any, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(401);
+	});
+
+	it('should handle invalid PEM format', async () => {
+		// Create env with invalid PRIVATE_KEY
+		const badPemEnv = {
+			...env,
+			PRIVATE_KEY: 'INVALID PEM CONTENT WITHOUT HEADERS'
+		};
+
+		const logEntry = {
+			logId: 'test-log-pem',
+			timestamp: new Date().toISOString(),
+			Metadata: { test: 'pem error' },
+		};
+
+		const request = new IncomingRequest('http://example.com/ingest', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Logpush-Token': TEST_LOGPUSH_TOKEN,
+			},
+			body: JSON.stringify(logEntry),
+		});
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, badPemEnv as any, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(500);
+		expect(await response.text()).toBe('Internal server error');
 	});
 });

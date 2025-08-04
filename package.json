@@ -7,11 +7,16 @@
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
 		"test": "vitest",
+		"test:coverage": "vitest run --coverage",
 		"cf-typegen": "wrangler types",
-		"type-check": "tsc --noEmit"
+		"type-check": "tsc --noEmit",
+		"lint": "oxlint",
+		"lint:fix": "oxlint --fix"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.8.19",
+		"@vitest/coverage-v8": "^3.2.4",
+		"oxlint": "^1.9.0",
 		"typescript": "^5.5.2",
 		"vitest": "~3.2.0",
 		"wrangler": "^4.27.0"
