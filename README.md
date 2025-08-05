@@ -8,12 +8,18 @@ This Worker receives encrypted logs from Cloudflare AI Gateway via Logpush, decr
 
 ## Architecture
 
-```
-Cloudflare AI Gateway → Logpush → Worker → R2 Storage (archive)
-                                      ↓
-                                   decrypt
-                                      ↓
-                                Datadog Logs
+```mermaid
+graph LR
+    A[Cloudflare AI Gateway] -->|encrypted logs| B[Logpush]
+    B -->|HTTP POST| C[Worker]
+    C -->|decrypt| D[Decrypted Logs]
+    D -->|store| E[R2 Storage]
+    D -->|forward| F[Datadog Logs]
+    
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style C fill:#bbf,stroke:#333,stroke-width:2px
+    style E fill:#bfb,stroke:#333,stroke-width:2px
+    style F fill:#fbf,stroke:#333,stroke-width:2px
 ```
 
 ## Features
