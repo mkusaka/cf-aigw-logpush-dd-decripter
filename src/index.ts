@@ -435,6 +435,7 @@ export default {
 						'processed-at': now.toISOString(),
 					}
 				});
+				console.log(`[${requestId}] Stored logs in R2: ${key}`);
 			} catch (r2Error) {
 				console.error(`[${requestId}] Failed to store logs in R2:`, r2Error);
 				// Continue processing even if R2 storage fails
@@ -462,6 +463,9 @@ export default {
 				console.error(`[${requestId}] Datadog API error:`, datadogResponse.status, await datadogResponse.text());
 				return new Response('Failed to forward to Datadog', { status: 500 });
 			}
+
+			// Log processing summary
+			console.log(`[${requestId}] Successfully processed ${logEntries.length} log entries: ${decryptedEntries.length} decrypted, ${decryptionErrors.length} errors`);
 
 			// Return 202 Accepted
 			return new Response(null, { status: 202 });
