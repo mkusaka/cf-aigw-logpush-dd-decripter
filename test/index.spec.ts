@@ -178,8 +178,19 @@ hQIDAQAB
 			ddtags: 'env:prod,team:infra',
 			Metadata: testMetadata,
 			RequestBody: testRequestBody,
-			ResponseBody: testResponseBody,
+			ResponseBody: {
+				id: testResponseBody.id,
+				type: testResponseBody.type,
+				role: testResponseBody.role,
+				model: testResponseBody.model,
+				// content should be excluded
+				stop_reason: testResponseBody.stop_reason,
+				stop_sequence: testResponseBody.stop_sequence,
+				usage: testResponseBody.usage,
+			},
 		});
+		// Verify content is excluded
+		expect(datadogPayload[0].ResponseBody).not.toHaveProperty('content');
 	});
 
 	it('should handle logs with unencrypted fields', async () => {

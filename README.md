@@ -20,7 +20,7 @@ Cloudflare AI Gateway → Logpush → Worker → R2 Storage (archive)
 
 - 🔐 Decrypts RSA-OAEP + AES-GCM encrypted fields from AI Gateway logs
 - 📦 Stores decrypted logs in R2 for compliance/analysis
-- 📊 Forwards decrypted logs to Datadog with proper tagging
+- 📊 Forwards decrypted logs to Datadog with proper tagging (excluding response content for privacy)
 - 🔒 Secure API key management using Worker secrets
 - 🗜️ Handles gzip-compressed log batches
 - ⚡ Processes multiple log entries per request (NDJSON format)
@@ -31,7 +31,9 @@ AI Gateway Logpush currently provides these fields:
 - **Unencrypted**: `Cached`, `Endpoint`, `Gateway`, `Model`, `Provider`, `RateLimited`, `StatusCode`
 - **Encrypted**: `Metadata`, `RequestBody`, `ResponseBody`
 
-**Note**: Performance metrics like `duration`, `tokens_in`, `tokens_out` are available through the AI Gateway API but **are NOT included in Logpush exports**. To access these metrics, you would need to query the AI Gateway API directly.
+**Notes**: 
+- Performance metrics like `duration`, `tokens_in`, `tokens_out` are available through the AI Gateway API but **are NOT included in Logpush exports**. To access these metrics, you would need to query the AI Gateway API directly.
+- For privacy, the `content` field in `ResponseBody` is **excluded** when forwarding to Datadog, but is preserved in R2 storage.
 
 ## Prerequisites
 

@@ -104,7 +104,7 @@ interface DatadogLogEntry {
 		type?: string;
 		role?: string;
 		model?: string;
-		content?: string;
+		// content is excluded for privacy
 		stop_reason?: string | null;
 		stop_sequence?: string | null;
 		usage?: {
@@ -384,7 +384,7 @@ export default {
 					};
 				}
 				
-				// Filter ResponseBody fields
+				// Filter ResponseBody fields (excluding content for privacy)
 				if (decrypted.ResponseBody && typeof decrypted.ResponseBody === 'object' && 
 					!('type' in decrypted.ResponseBody && decrypted.ResponseBody.type === 'encrypted')) {
 					const responseBody = decrypted.ResponseBody as ResponseBodyData;
@@ -393,7 +393,7 @@ export default {
 						type: responseBody.type,
 						role: responseBody.role,
 						model: responseBody.model,
-						content: responseBody.content,
+						// content is excluded for privacy
 						stop_reason: responseBody.stop_reason,
 						stop_sequence: responseBody.stop_sequence,
 						usage: responseBody.usage,
