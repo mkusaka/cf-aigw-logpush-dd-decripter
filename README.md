@@ -15,11 +15,6 @@ graph LR
     C -->|decrypt| D[Decrypted Logs]
     D -->|store| E[R2 Storage]
     D -->|forward| F[Datadog Logs]
-    
-    style A fill:#f9f,stroke:#333,stroke-width:2px
-    style C fill:#bbf,stroke:#333,stroke-width:2px
-    style E fill:#bfb,stroke:#333,stroke-width:2px
-    style F fill:#fbf,stroke:#333,stroke-width:2px
 ```
 
 ## Features
